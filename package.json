@@ -1,6 +1,6 @@
 {
   "name": "ntion",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Token-efficient CLI for personal Notion workspaces",
   "type": "module",
   "license": "MIT",
