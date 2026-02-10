@@ -35,6 +35,14 @@ A single "get all my tasks" workflow tells the whole story:
 2. **No schema bloat** — MCP's database fetch includes ~2 KB of SQLite DDL, ~800 B of XML boilerplate, and ~1.4 KB of base64 `collectionPropertyOption://` URLs that are never used for reads. ntion returns only actionable data.
 3. **Markdown-first** — Page content defaults to markdown, matching what agents actually consume. No manual format negotiation needed.
 
+## Agent skill
+
+ntion ships with an [agent skill](https://docs.anthropic.com/en/docs/claude-code/skills) that teaches AI agents how to use the CLI. Install it with:
+
+```bash
+npx skills add https://github.com/mbroton/notion-cli --skill ntion-cli
+```
+
 ## Install
 
 ```bash
