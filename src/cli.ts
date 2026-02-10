@@ -351,7 +351,7 @@ program
 
 program
   .command("auth")
-  .description("Configure authentication")
+  .description("Configure authentication (get your token at https://www.notion.so/profile/integrations)")
   .option("--token <secret>", "Notion integration token (direct)")
   .option("--token-env <name>", "API key environment variable name (CI)")
   .option("--pretty", "pretty-print JSON output")

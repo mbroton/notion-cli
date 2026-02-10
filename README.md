@@ -1,4 +1,4 @@
-# notion-cli
+# ntion
 
 Token-efficient Notion CLI built for AI agents like Claude Code and Codex.
 
