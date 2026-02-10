@@ -3,7 +3,7 @@ import { CliError } from "../errors/cli-error.js";
 import { ensureConfigDir, getConfigPath } from "./paths.js";
 import { AppConfig, AppConfigSchema, InitAuthConfigInput } from "./types.js";
 
-const SETUP_HINT = "Run `notion-lite auth` to configure the CLI.";
+const SETUP_HINT = "Run `notcli auth` to configure the CLI.";
 
 export async function loadConfig(): Promise<AppConfig> {
   const configPath = getConfigPath();
@@ -67,7 +67,8 @@ export async function saveConfig(config: AppConfig): Promise<void> {
 
 export function buildInitialAuthConfig(input: InitAuthConfigInput): AppConfig {
   return AppConfigSchema.parse({
-    notion_api_key_env: input.notionApiKeyEnv,
+    notion_api_key: input.notionApiKey,
+    notion_api_key_env: input.notionApiKeyEnv ?? "NOTION_API_KEY",
     defaults: {
       limit: 25,
       view: "compact",

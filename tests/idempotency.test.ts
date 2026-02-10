@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,10 +14,10 @@ afterEach(() => {
 
 describe("IdempotencyStore", () => {
   it("reserves once and replays after completion", () => {
-    const dir = mkdtempSync(join(tmpdir(), "notion-lite-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "notcli-test-"));
     tempDirs.push(dir);
 
-    const store = new IdempotencyStore(join(dir, "idem.db"));
+    const store = new IdempotencyStore(join(dir, "idem.json"));
     const first = store.reserve("k1", "pages.update", "h1");
     expect(first.kind).toBe("execute");
 
@@ -33,6 +33,26 @@ describe("IdempotencyStore", () => {
     }
 
     store.close();
+  });
+
+  it("prunes entries older than 3 minutes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "notcli-test-"));
+    tempDirs.push(dir);
+    const filePath = join(dir, "idem.json");
+
+    const store = new IdempotencyStore(filePath);
+    store.reserve("k1", "pages.update", "h1");
+    store.complete("k1", "pages.update", "h1", { ok: true });
+
+    // Backdate the entry beyond 3 minutes
+    const data = JSON.parse(readFileSync(filePath, "utf-8"));
+    const key = Object.keys(data)[0];
+    data[key].createdAt = Date.now() - 200_000;
+    writeFileSync(filePath, JSON.stringify(data), "utf-8");
+
+    // Next access triggers pruning — the old entry should be gone
+    const lookup = store.lookup("k1", "pages.update", "h1");
+    expect(lookup.kind).toBe("miss");
   });
 
   it("builds deterministic internal idempotency keys", () => {

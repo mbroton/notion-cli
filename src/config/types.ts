@@ -12,6 +12,7 @@ export const SchemaCacheEntrySchema = z.object({
 });
 
 export const AppConfigSchema = z.object({
+  notion_api_key: z.string().optional(),
   notion_api_key_env: z.string().default("NOTION_API_KEY"),
   defaults: z
     .object({
@@ -30,5 +31,6 @@ export const AppConfigSchema = z.object({
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export interface InitAuthConfigInput {
-  notionApiKeyEnv: string;
+  notionApiKey?: string;
+  notionApiKeyEnv?: string;
 }

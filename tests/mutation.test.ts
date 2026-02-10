@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe("executeMutationWithIdempotency", () => {
   it("does not fail successful mutations when audit logging fails", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "notion-lite-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "notcli-test-"));
     tempDirs.push(dir);
 
     const previousXdg = process.env.XDG_CONFIG_HOME;
@@ -49,7 +49,7 @@ describe("executeMutationWithIdempotency", () => {
   });
 
   it("preserves original mutation errors when audit logging also fails", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "notion-lite-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "notcli-test-"));
     tempDirs.push(dir);
 
     const previousXdg = process.env.XDG_CONFIG_HOME;

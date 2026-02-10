@@ -1,209 +1,204 @@
-# notion-lite
+# notcli
 
-Token-efficient, workspace-agnostic CLI for Notion, optimized for terminal and AI-agent use.
+Token-efficient Notion CLI built for AI agents like Claude Code and Codex.
 
-## Design
+One command where the official MCP needs twelve. Compact JSON where others dump kilobytes of noise. Zero native dependencies — runs instantly via `npx`.
 
-- Generic commands for any workspace (no fixed personal schema assumptions).
-- Compact deterministic JSON envelopes.
-- Automatic internal schema caching (no manual refresh command).
-- Automatic internal idempotency for mutating commands.
-- Best-effort internal conflict handling for page mutations.
+## Why notcli over the official Notion MCP?
+
+The official Notion MCP server works, but it was designed for general-purpose access, not for token-constrained AI agents. Every extra byte in a response eats into your context window. Every extra round-trip adds latency and cost.
+
+I benchmarked both tools side-by-side on real workflows:
+
+### Individual operations
+
+| Operation | notcli | MCP | Ratio |
+|---|---|---|---|
+| Search (tasks, pages only) | 743 B | 1,019 B | **1.4x smaller** |
+| Schema (Tasks DB) | 1,868 B | 6,026 B | **3.2x smaller** |
+| Page properties only | 1,004 B | n/a | notcli-only |
+| Page + content (markdown) | 1,227 B | 1,263 B | ~1.0x (tie) |
+
+### The real difference: workflows
+
+A single "get all my tasks" workflow tells the whole story:
+
+| Scale | notcli | MCP |
+|---|---|---|
+| 1 task | **1,938 B, 1 call** | 8,308 B, 3 calls (4.3x) |
+| 10 tasks | **~5 KB, 1 call** | ~19.6 KB, 12 calls (3.9x) |
+| 50 tasks | **~20 KB, 1 call** | ~70 KB, 52 calls (3.5x) |
+
+### Where the savings come from
+
+1. **Batch queries** — notcli returns N records in 1 call. The MCP requires 1 fetch per page. This is the dominant factor and it scales linearly.
+2. **No schema bloat** — MCP's database fetch includes ~2 KB of SQLite DDL, ~800 B of XML boilerplate, and ~1.4 KB of base64 `collectionPropertyOption://` URLs that are never used for reads. notcli returns only actionable data.
+3. **Markdown-first** — Page content defaults to markdown, matching what agents actually consume. No manual format negotiation needed.
 
 ## Install
 
 ```bash
-npm install
-npm run build
+npm install -g notcli
 ```
 
-## Configure auth
-
-Set your Notion integration token:
+Or run directly without installing:
 
 ```bash
-export NOTION_API_KEY="secret_xxx"
+npx notcli --help
 ```
 
-Then configure the CLI:
+No native compilation, no C++ toolchain required — installs in seconds.
+
+## Quick start
+
+### 1. Authenticate
+
+Create an integration and grab your API key at [notion.so/profile/integrations](https://www.notion.so/profile/integrations).
 
 ```bash
-notion-lite auth
+notcli auth
+# Paste your Notion integration token when prompted — done.
+
+# Or pass it directly (e.g. in scripts):
+notcli auth --token "secret_xxx"
+
+# CI alternative — read token from an environment variable:
+notcli auth --token-env NOTION_API_KEY
 ```
 
-Non-interactive auth setup:
+### 2. Go
 
 ```bash
-notion-lite auth --token-env NOTION_API_KEY
+# Find your databases
+notcli data-sources list --query "tasks"
+
+# Query all tasks in one call
+notcli data-sources query --id <data_source_id> --view full
+
+# Read a page with its content as markdown
+notcli pages get --id <page_id> --include-content
+
+# Search across your workspace
+notcli search --query "release notes" --limit 25
 ```
-
-## Output contract
-
-Success envelope:
-
-```json
-{
-  "ok": true,
-  "data": {},
-  "meta": {
-    "request_id": "..."
-  }
-}
-```
-
-Error envelope:
-
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "invalid_input",
-    "message": "...",
-    "retryable": false
-  },
-  "meta": {
-    "request_id": "..."
-  }
-}
-```
-
-Pagination is returned in `meta.pagination` when relevant.
 
 ## Commands
-
-### Discoverability
-
-Start with:
-
-```bash
-notion-lite --help
-```
-
-Root help now highlights advanced features directly:
-
-- `pages create-bulk` and `pages unarchive`
-- `pages get --include-content --content-format markdown`
-- `blocks append --markdown|--markdown-file`
-- advanced search filters (`--scope`, created/edited ranges, `--created-by`, `--object`, `--scan-limit`)
-
-Use targeted help when needed:
-
-```bash
-notion-lite pages --help
-notion-lite search --help
-notion-lite blocks append --help
-```
 
 ### Search
 
 ```bash
-notion-lite search --query "release notes" --limit 25
-notion-lite search --query "infra" --object page --created-after 2026-01-01T00:00:00Z
-notion-lite search --query "oncall" --scope <page_or_data_source_id> --created-by <user_id>
+notcli search --query "release notes" --limit 25
+notcli search --query "infra" --object page --created-after 2026-01-01T00:00:00Z
+notcli search --query "oncall" --scope <page_or_data_source_id> --created-by <user_id>
 ```
 
 ### Data sources
 
 ```bash
-notion-lite data-sources list --query "tasks"
-notion-lite data-sources get --id <data_source_id> --view full
-notion-lite data-sources schema --id <data_source_id>
-notion-lite data-sources query --id <data_source_id> --filter-json '{"property":"Status","status":{"equals":"In Progress"}}'
+notcli data-sources list --query "tasks"
+notcli data-sources get --id <data_source_id> --view full
+notcli data-sources schema --id <data_source_id>
+notcli data-sources query --id <data_source_id> \
+  --filter-json '{"property":"Status","status":{"equals":"In Progress"}}'
 ```
 
 ### Pages
 
 ```bash
-notion-lite pages get --id <page_id>
-notion-lite pages get --id <page_id> --view full --include-content --content-format markdown --content-max-blocks 200 --content-depth 1
+notcli pages get --id <page_id>
+notcli pages get --id <page_id> --include-content --content-format markdown
 
-notion-lite pages create \
+notcli pages create \
   --parent-data-source-id <data_source_id> \
-  --properties-json '{"Name":"Ship CLI","Status":"In Progress"}' \
-  --return-view full
+  --properties-json '{"Name":"Ship CLI","Status":"In Progress"}'
 
-notion-lite pages create-bulk \
+notcli pages create-bulk \
   --parent-data-source-id <data_source_id> \
   --items-json '[{"properties":{"Name":"Task A"}},{"properties":{"Name":"Task B"}}]' \
   --concurrency 5
 
-notion-lite pages update \
-  --id <page_id> \
-  --patch-json '{"Status":"Done"}' \
-  --return-view full
+notcli pages update --id <page_id> --patch-json '{"Status":"Done"}'
+notcli pages archive --id <page_id>
+notcli pages unarchive --id <page_id>
 
-notion-lite pages archive --id <page_id>
-notion-lite pages unarchive --id <page_id>
-
-notion-lite pages relate \
-  --from-id <page_id> \
-  --property Project \
-  --to-id <page_id> \
-  --return-view full
-
-notion-lite pages unrelate \
-  --from-id <page_id> \
-  --property Project \
-  --to-id <page_id> \
-  --return-view full
+notcli pages relate --from-id <page_id> --property Project --to-id <page_id>
+notcli pages unrelate --from-id <page_id> --property Project --to-id <page_id>
 ```
 
 ### Blocks
 
 ```bash
-notion-lite blocks get --id <page_or_block_id> --max-blocks 200 --depth 1 --format markdown
+# Read as markdown (default)
+notcli blocks get --id <page_or_block_id> --depth 1
 
-notion-lite blocks append \
-  --id <page_or_block_id> \
-  --blocks-json '[{"object":"block","type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":"hello"}}]}}]'
+# Append markdown content
+notcli blocks append --id <page_or_block_id> --markdown "# Title\n\nHello"
+notcli blocks append --id <page_or_block_id> --markdown-file ./notes.md
 
-notion-lite blocks append --id <page_or_block_id> --markdown "# Title\n\nHello"
-notion-lite blocks append --id <page_or_block_id> --markdown-file ./notes.md
+# Surgical insertion
+notcli blocks insert --parent-id <page_or_block_id> --markdown "New intro" --position start
+notcli blocks insert --parent-id <page_or_block_id> --markdown "After this" --after-id <block_id>
 
-notion-lite blocks insert \
-  --parent-id <page_or_block_id> \
-  --markdown "Inserted at top" \
-  --position start
-
-notion-lite blocks insert \
-  --parent-id <page_or_block_id> \
-  --markdown "Inserted after sibling" \
-  --after-id <block_id>
-
-notion-lite blocks select \
+# Find and replace block ranges
+notcli blocks select \
   --scope-id <page_or_block_id> \
-  --selector-json '{"where":{"type":"paragraph","text_contains":"TODO"},"nth":1,"from":"start"}'
+  --selector-json '{"where":{"type":"paragraph","text_contains":"TODO"}}'
 
-notion-lite blocks replace-range \
+notcli blocks replace-range \
   --scope-id <page_or_block_id> \
   --start-selector-json '{"where":{"text_contains":"Start"}}' \
   --end-selector-json '{"where":{"text_contains":"End"}}' \
   --markdown "Replacement content"
 ```
 
-### Health
+### Health check
 
 ```bash
-notion-lite doctor
+notcli doctor
 ```
+
+## Output format
+
+Every response follows the same envelope:
+
+```json
+{"ok": true, "data": {}, "meta": {"request_id": "..."}}
+```
+
+```json
+{"ok": false, "error": {"code": "invalid_input", "message": "...", "retryable": false}, "meta": {"request_id": "..."}}
+```
+
+Compact, deterministic, easy to parse — by humans or machines.
+
+## Design principles
+
+- **Generic** — works with any Notion workspace, no hardcoded schema assumptions
+- **Compact** — deterministic JSON envelopes, minimal bytes per response
+- **Safe** — automatic idempotency for all mutations, built-in conflict detection
+- **Fast** — zero native dependencies, internal schema caching, batch operations
+- **Agent-friendly** — designed for AI agents that pay per token
 
 ## Exit codes
 
-- `0` success
-- `2` invalid input
-- `3` not found
-- `4` conflict
-- `5` retryable upstream error
-- `6` auth/config error
-- `1` generic failure
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Generic failure |
+| 2 | Invalid input |
+| 3 | Not found |
+| 4 | Conflict |
+| 5 | Retryable upstream error |
+| 6 | Auth/config error |
 
-## Storage paths
+## Storage
 
-- Config: `~/.config/notion-lite/config.json` (or `$XDG_CONFIG_HOME/notion-lite/config.json`)
-- Idempotency DB: `~/.config/notion-lite/idempotency.db`
-- Audit log: `~/.config/notion-lite/audit.log`
+Config and state are stored in `~/.config/notcli/` (or `$XDG_CONFIG_HOME/notcli/`):
 
-## Notes
+- `config.json` — auth and defaults
+- `idempotency.json` — short-lived mutation dedup cache (auto-pruned)
+- `audit.log` — local mutation audit trail
 
-- Notion API version is pinned to `2025-09-03`.
-- This CLI assumes a single-user, personal automation context.
+## License
+
+MIT

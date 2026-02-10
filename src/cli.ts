@@ -63,11 +63,11 @@ const ROOT_HELP_EPILOG = [
   "         --created-by --object --scan-limit",
   "",
   "Agent-First Quick Flows:",
-  "  notion-lite data-sources list --query \"tasks\"",
-  "  notion-lite data-sources schema --id <data_source_id>",
-  "  notion-lite pages create-bulk --parent-data-source-id <id> --items-json '[{\"Name\":\"Task A\"}]'",
-  "  notion-lite pages get --id <page_id> --include-content --content-depth 1",
-  "  notion-lite search --query \"infra\" --object page --created-after 2026-01-01T00:00:00Z",
+  "  notcli data-sources list --query \"tasks\"",
+  "  notcli data-sources schema --id <data_source_id>",
+  "  notcli pages create-bulk --parent-data-source-id <id> --items-json '[{\"Name\":\"Task A\"}]'",
+  "  notcli pages get --id <page_id> --include-content --content-depth 1",
+  "  notcli search --query \"infra\" --object page --created-after 2026-01-01T00:00:00Z",
 ].join("\n");
 
 const PAGES_HELP_EPILOG = [
@@ -90,8 +90,8 @@ const SEARCH_HELP_EPILOG = [
   "  Scan budget: --scan-limit <n>",
   "",
   "Examples:",
-  "  notion-lite search --query \"release\" --scope <page_id> --object page",
-  "  notion-lite search --query \"infra\" --created-after 2026-01-01T00:00:00Z --created-by <user_id>",
+  "  notcli search --query \"release\" --scope <page_id> --object page",
+  "  notcli search --query \"infra\" --created-after 2026-01-01T00:00:00Z --created-by <user_id>",
 ].join("\n");
 
 const BLOCKS_APPEND_HELP_EPILOG = [
@@ -100,8 +100,8 @@ const BLOCKS_APPEND_HELP_EPILOG = [
   "  Provide exactly one of --blocks-json, --markdown, or --markdown-file.",
   "",
   "Examples:",
-  "  notion-lite blocks append --id <id> --markdown \"# Heading\\n\\nBody\"",
-  "  notion-lite blocks append --id <id> --markdown-file ./notes.md",
+  "  notcli blocks append --id <id> --markdown \"# Heading\\n\\nBody\"",
+  "  notcli blocks append --id <id> --markdown-file ./notes.md",
 ].join("\n");
 
 const BLOCKS_INSERT_HELP_EPILOG = [
@@ -110,8 +110,8 @@ const BLOCKS_INSERT_HELP_EPILOG = [
   "  --position end|start (default: end), or provide --after-id <block_id>.",
   "",
   "Examples:",
-  "  notion-lite blocks insert --parent-id <page_id> --markdown \"New intro\" --position start",
-  "  notion-lite blocks insert --parent-id <parent_block_id> --markdown \"Inserted\" --after-id <block_id>",
+  "  notcli blocks insert --parent-id <page_id> --markdown \"New intro\" --position start",
+  "  notcli blocks insert --parent-id <parent_block_id> --markdown \"Inserted\" --after-id <block_id>",
 ].join("\n");
 
 const BLOCKS_SELECT_HELP_EPILOG = [
@@ -131,7 +131,7 @@ const BLOCKS_REPLACE_RANGE_HELP_EPILOG = [
   "  v1 constraint: start and end must resolve to siblings under the same parent.",
   "",
   "Example:",
-  "  notion-lite blocks replace-range --scope-id <page_id> \\",
+  "  notcli blocks replace-range --scope-id <page_id> \\",
   "    --start-selector-json '{\"where\":{\"text_contains\":\"Start\"}}' \\",
   "    --end-selector-json '{\"where\":{\"text_contains\":\"End\"}}' \\",
   "    --markdown \"Replacement body\"",
@@ -288,25 +288,44 @@ function resolveReturnView(raw: string | undefined): ViewMode {
   return resolveView(raw, "full");
 }
 
-async function runInteractiveAuthSetup(currentTokenEnv: string): Promise<string> {
+async function runInteractiveAuthSetup(): Promise<string> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new CliError(
       "invalid_input",
-      "Interactive auth requires a TTY. Use `notion-lite auth --token-env <ENV_NAME>` in non-interactive environments.",
+      "Interactive auth requires a TTY. Use `notcli auth --token <secret>` or `notcli auth --token-env <ENV_NAME>` in non-interactive environments.",
     );
   }
 
   const rl = createInterface({ input, output });
   try {
-    const response = await rl.question(`Token environment variable name [${currentTokenEnv}]: `);
+    const response = await rl.question("Paste your Notion integration token: ");
     const trimmed = response.trim();
-    return trimmed.length > 0 ? trimmed : currentTokenEnv;
+    if (!trimmed) {
+      throw new CliError("invalid_input", "Token cannot be empty.");
+    }
+    return trimmed;
   } finally {
     rl.close();
   }
 }
 
-async function saveAuthConfig(tokenEnv: string): Promise<{ token_env: string; config_path: string }> {
+async function saveAuthConfig(token: string): Promise<{ config_path: string }> {
+  const existing = await loadConfigOrNull();
+  const nextConfig =
+    existing ??
+    buildInitialAuthConfig({
+      notionApiKey: token,
+    });
+
+  nextConfig.notion_api_key = token;
+  await saveConfig(nextConfig);
+
+  return {
+    config_path: getConfigPath(),
+  };
+}
+
+async function saveAuthConfigEnv(tokenEnv: string): Promise<{ token_env: string; config_path: string }> {
   const existing = await loadConfigOrNull();
   const nextConfig =
     existing ??
@@ -325,7 +344,7 @@ async function saveAuthConfig(tokenEnv: string): Promise<{ token_env: string; co
 
 const program = new Command();
 program
-  .name("notion-lite")
+  .name("notcli")
   .description("Token-efficient, workspace-agnostic Notion CLI")
   .showHelpAfterError()
   .addHelpText("after", ROOT_HELP_EPILOG);
@@ -333,30 +352,52 @@ program
 program
   .command("auth")
   .description("Configure authentication")
-  .option("--token-env <name>", "API key environment variable name")
+  .option("--token <secret>", "Notion integration token (direct)")
+  .option("--token-env <name>", "API key environment variable name (CI)")
   .option("--pretty", "pretty-print JSON output")
   .option("--timeout-ms <n>", "request timeout in milliseconds")
-  .action(async (options: { tokenEnv?: string; pretty?: boolean; timeoutMs?: string }) => {
+  .action(async (options: { token?: string; tokenEnv?: string; pretty?: boolean; timeoutMs?: string }) => {
     await runAction(Boolean(options.pretty), async () => {
-      const existing = await loadConfigOrNull();
-      const defaultTokenEnv = existing?.notion_api_key_env ?? "NOTION_API_KEY";
-      const tokenEnv = options.tokenEnv ?? (await runInteractiveAuthSetup(defaultTokenEnv));
+      if (options.token && options.tokenEnv) {
+        throw new CliError("invalid_input", "Provide --token or --token-env, not both.");
+      }
 
-      const saved = await saveAuthConfig(tokenEnv);
-      const tokenPresent = Boolean(process.env[tokenEnv]);
+      // CI path: env-var indirection
+      if (options.tokenEnv) {
+        const saved = await saveAuthConfigEnv(options.tokenEnv);
+        const tokenPresent = Boolean(process.env[options.tokenEnv]);
 
-      if (!tokenPresent) {
+        if (!tokenPresent) {
+          return {
+            data: {
+              ...saved,
+              token_present: false,
+              verified: false,
+              message: `Set ${options.tokenEnv} in your environment to enable API calls.`,
+            },
+          };
+        }
+
+        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
+        await notion.search({ page_size: 1 });
+
         return {
           data: {
             ...saved,
-            token_present: false,
-            verified: false,
-            message: `Set ${tokenEnv} in your environment to enable API calls.`,
+            token_present: true,
+            verified: true,
+            message: "Authentication verified.",
           },
         };
       }
 
-      const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
+      // Direct token: from flag or interactive prompt
+      const token = options.token ?? (await runInteractiveAuthSetup());
+      const saved = await saveAuthConfig(token);
+
+      const timeoutMs = options.timeoutMs ? Number.parseInt(options.timeoutMs, 10) : 30000;
+      const { NotionClientAdapter } = await import("./notion/client.js");
+      const notion = new NotionClientAdapter(token, timeoutMs);
       await notion.search({ page_size: 1 });
 
       return {

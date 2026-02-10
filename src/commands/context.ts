@@ -3,7 +3,7 @@ import { AppConfig } from "../config/types.js";
 import { CliError } from "../errors/cli-error.js";
 import { NotionClientAdapter } from "../notion/client.js";
 
-const AUTH_HINT = "Run `notion-lite auth` and set your token environment variable.";
+const AUTH_HINT = "Run `notcli auth` to configure your Notion API token.";
 
 export interface CommonReadOptions {
   view?: "compact" | "full";
@@ -39,11 +39,11 @@ export async function loadRuntime(options?: { timeoutMs?: string }): Promise<{
   notion: NotionClientAdapter;
 }> {
   const config = await loadConfig();
-  const apiKey = process.env[config.notion_api_key_env];
+  const apiKey = config.notion_api_key ?? process.env[config.notion_api_key_env];
   if (!apiKey) {
     throw new CliError(
       "auth_or_config",
-      `Environment variable ${config.notion_api_key_env} is missing. ${AUTH_HINT}`,
+      `No API token found. ${AUTH_HINT}`,
     );
   }
 
