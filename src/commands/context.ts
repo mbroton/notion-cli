@@ -3,7 +3,7 @@ import { AppConfig } from "../config/types.js";
 import { CliError } from "../errors/cli-error.js";
 import { NotionClientAdapter } from "../notion/client.js";
 
-const AUTH_HINT = "Run `notcli auth` to configure your Notion API token.";
+const AUTH_HINT = "Run `ntion auth` to configure your Notion API token.";
 
 export interface CommonReadOptions {
   view?: "compact" | "full";

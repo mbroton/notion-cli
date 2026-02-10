@@ -3,7 +3,7 @@ import { CliError } from "../errors/cli-error.js";
 import { ensureConfigDir, getConfigPath } from "./paths.js";
 import { AppConfig, AppConfigSchema, InitAuthConfigInput } from "./types.js";
 
-const SETUP_HINT = "Run `notcli auth` to configure the CLI.";
+const SETUP_HINT = "Run `ntion auth` to configure the CLI.";
 
 export async function loadConfig(): Promise<AppConfig> {
   const configPath = getConfigPath();

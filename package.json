@@ -1,11 +1,11 @@
 {
-  "name": "notcli",
+  "name": "ntion",
   "version": "0.1.0",
   "description": "Token-efficient CLI for personal Notion workspaces",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "notcli": "dist/cli.js"
+    "ntion": "dist/cli.js"
   },
   "files": [
     "dist"

@@ -63,11 +63,11 @@ const ROOT_HELP_EPILOG = [
   "         --created-by --object --scan-limit",
   "",
   "Agent-First Quick Flows:",
-  "  notcli data-sources list --query \"tasks\"",
-  "  notcli data-sources schema --id <data_source_id>",
-  "  notcli pages create-bulk --parent-data-source-id <id> --items-json '[{\"Name\":\"Task A\"}]'",
-  "  notcli pages get --id <page_id> --include-content --content-depth 1",
-  "  notcli search --query \"infra\" --object page --created-after 2026-01-01T00:00:00Z",
+  "  ntion data-sources list --query \"tasks\"",
+  "  ntion data-sources schema --id <data_source_id>",
+  "  ntion pages create-bulk --parent-data-source-id <id> --items-json '[{\"Name\":\"Task A\"}]'",
+  "  ntion pages get --id <page_id> --include-content --content-depth 1",
+  "  ntion search --query \"infra\" --object page --created-after 2026-01-01T00:00:00Z",
 ].join("\n");
 
 const PAGES_HELP_EPILOG = [
@@ -90,8 +90,8 @@ const SEARCH_HELP_EPILOG = [
   "  Scan budget: --scan-limit <n>",
   "",
   "Examples:",
-  "  notcli search --query \"release\" --scope <page_id> --object page",
-  "  notcli search --query \"infra\" --created-after 2026-01-01T00:00:00Z --created-by <user_id>",
+  "  ntion search --query \"release\" --scope <page_id> --object page",
+  "  ntion search --query \"infra\" --created-after 2026-01-01T00:00:00Z --created-by <user_id>",
 ].join("\n");
 
 const BLOCKS_APPEND_HELP_EPILOG = [
@@ -100,8 +100,8 @@ const BLOCKS_APPEND_HELP_EPILOG = [
   "  Provide exactly one of --blocks-json, --markdown, or --markdown-file.",
   "",
   "Examples:",
-  "  notcli blocks append --id <id> --markdown \"# Heading\\n\\nBody\"",
-  "  notcli blocks append --id <id> --markdown-file ./notes.md",
+  "  ntion blocks append --id <id> --markdown \"# Heading\\n\\nBody\"",
+  "  ntion blocks append --id <id> --markdown-file ./notes.md",
 ].join("\n");
 
 const BLOCKS_INSERT_HELP_EPILOG = [
@@ -110,8 +110,8 @@ const BLOCKS_INSERT_HELP_EPILOG = [
   "  --position end|start (default: end), or provide --after-id <block_id>.",
   "",
   "Examples:",
-  "  notcli blocks insert --parent-id <page_id> --markdown \"New intro\" --position start",
-  "  notcli blocks insert --parent-id <parent_block_id> --markdown \"Inserted\" --after-id <block_id>",
+  "  ntion blocks insert --parent-id <page_id> --markdown \"New intro\" --position start",
+  "  ntion blocks insert --parent-id <parent_block_id> --markdown \"Inserted\" --after-id <block_id>",
 ].join("\n");
 
 const BLOCKS_SELECT_HELP_EPILOG = [
@@ -131,7 +131,7 @@ const BLOCKS_REPLACE_RANGE_HELP_EPILOG = [
   "  v1 constraint: start and end must resolve to siblings under the same parent.",
   "",
   "Example:",
-  "  notcli blocks replace-range --scope-id <page_id> \\",
+  "  ntion blocks replace-range --scope-id <page_id> \\",
   "    --start-selector-json '{\"where\":{\"text_contains\":\"Start\"}}' \\",
   "    --end-selector-json '{\"where\":{\"text_contains\":\"End\"}}' \\",
   "    --markdown \"Replacement body\"",
@@ -292,7 +292,7 @@ async function runInteractiveAuthSetup(): Promise<string> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new CliError(
       "invalid_input",
-      "Interactive auth requires a TTY. Use `notcli auth --token <secret>` or `notcli auth --token-env <ENV_NAME>` in non-interactive environments.",
+      "Interactive auth requires a TTY. Use `ntion auth --token <secret>` or `ntion auth --token-env <ENV_NAME>` in non-interactive environments.",
     );
   }
 
@@ -344,7 +344,7 @@ async function saveAuthConfigEnv(tokenEnv: string): Promise<{ token_env: string;
 
 const program = new Command();
 program
-  .name("notcli")
+  .name("ntion")
   .description("Token-efficient, workspace-agnostic Notion CLI")
   .showHelpAfterError()
   .addHelpText("after", ROOT_HELP_EPILOG);

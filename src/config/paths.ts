@@ -5,9 +5,9 @@ import { join } from "node:path";
 export function getConfigDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME;
   if (xdg && xdg.length > 0) {
-    return join(xdg, "notcli");
+    return join(xdg, "ntion");
   }
-  return join(homedir(), ".config", "notcli");
+  return join(homedir(), ".config", "ntion");
 }
 
 export function getConfigPath(): string {

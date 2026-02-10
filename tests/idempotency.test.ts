@@ -14,7 +14,7 @@ afterEach(() => {
 
 describe("IdempotencyStore", () => {
   it("reserves once and replays after completion", () => {
-    const dir = mkdtempSync(join(tmpdir(), "notcli-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "ntion-test-"));
     tempDirs.push(dir);
 
     const store = new IdempotencyStore(join(dir, "idem.json"));
@@ -36,7 +36,7 @@ describe("IdempotencyStore", () => {
   });
 
   it("prunes entries older than 3 minutes", () => {
-    const dir = mkdtempSync(join(tmpdir(), "notcli-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "ntion-test-"));
     tempDirs.push(dir);
     const filePath = join(dir, "idem.json");
 

@@ -1,10 +1,10 @@
-# notcli
+# notion-cli
 
 Token-efficient Notion CLI built for AI agents like Claude Code and Codex.
 
 One command where the official MCP needs twelve. Compact JSON where others dump kilobytes of noise. Zero native dependencies — runs instantly via `npx`.
 
-## Why notcli over the official Notion MCP?
+## Why ntion over the official Notion MCP?
 
 The official Notion MCP server works, but it was designed for general-purpose access, not for token-constrained AI agents. Every extra byte in a response eats into your context window. Every extra round-trip adds latency and cost.
 
@@ -12,18 +12,18 @@ I benchmarked both tools side-by-side on real workflows:
 
 ### Individual operations
 
-| Operation | notcli | MCP | Ratio |
+| Operation | ntion | MCP | Ratio |
 |---|---|---|---|
 | Search (tasks, pages only) | 743 B | 1,019 B | **1.4x smaller** |
 | Schema (Tasks DB) | 1,868 B | 6,026 B | **3.2x smaller** |
-| Page properties only | 1,004 B | n/a | notcli-only |
+| Page properties only | 1,004 B | n/a | ntion-only |
 | Page + content (markdown) | 1,227 B | 1,263 B | ~1.0x (tie) |
 
 ### The real difference: workflows
 
 A single "get all my tasks" workflow tells the whole story:
 
-| Scale | notcli | MCP |
+| Scale | ntion | MCP |
 |---|---|---|
 | 1 task | **1,938 B, 1 call** | 8,308 B, 3 calls (4.3x) |
 | 10 tasks | **~5 KB, 1 call** | ~19.6 KB, 12 calls (3.9x) |
@@ -31,20 +31,20 @@ A single "get all my tasks" workflow tells the whole story:
 
 ### Where the savings come from
 
-1. **Batch queries** — notcli returns N records in 1 call. The MCP requires 1 fetch per page. This is the dominant factor and it scales linearly.
-2. **No schema bloat** — MCP's database fetch includes ~2 KB of SQLite DDL, ~800 B of XML boilerplate, and ~1.4 KB of base64 `collectionPropertyOption://` URLs that are never used for reads. notcli returns only actionable data.
+1. **Batch queries** — ntion returns N records in 1 call. The MCP requires 1 fetch per page. This is the dominant factor and it scales linearly.
+2. **No schema bloat** — MCP's database fetch includes ~2 KB of SQLite DDL, ~800 B of XML boilerplate, and ~1.4 KB of base64 `collectionPropertyOption://` URLs that are never used for reads. ntion returns only actionable data.
 3. **Markdown-first** — Page content defaults to markdown, matching what agents actually consume. No manual format negotiation needed.
 
 ## Install
 
 ```bash
-npm install -g notcli
+npm install -g ntion
 ```
 
 Or run directly without installing:
 
 ```bash
-npx notcli --help
+npx ntion --help
 ```
 
 No native compilation, no C++ toolchain required — installs in seconds.
@@ -56,30 +56,30 @@ No native compilation, no C++ toolchain required — installs in seconds.
 Create an integration and grab your API key at [notion.so/profile/integrations](https://www.notion.so/profile/integrations).
 
 ```bash
-notcli auth
+ntion auth
 # Paste your Notion integration token when prompted — done.
 
 # Or pass it directly (e.g. in scripts):
-notcli auth --token "secret_xxx"
+ntion auth --token "secret_xxx"
 
 # CI alternative — read token from an environment variable:
-notcli auth --token-env NOTION_API_KEY
+ntion auth --token-env NOTION_API_KEY
 ```
 
 ### 2. Go
 
 ```bash
 # Find your databases
-notcli data-sources list --query "tasks"
+ntion data-sources list --query "tasks"
 
 # Query all tasks in one call
-notcli data-sources query --id <data_source_id> --view full
+ntion data-sources query --id <data_source_id> --view full
 
 # Read a page with its content as markdown
-notcli pages get --id <page_id> --include-content
+ntion pages get --id <page_id> --include-content
 
 # Search across your workspace
-notcli search --query "release notes" --limit 25
+ntion search --query "release notes" --limit 25
 ```
 
 ## Commands
@@ -87,64 +87,64 @@ notcli search --query "release notes" --limit 25
 ### Search
 
 ```bash
-notcli search --query "release notes" --limit 25
-notcli search --query "infra" --object page --created-after 2026-01-01T00:00:00Z
-notcli search --query "oncall" --scope <page_or_data_source_id> --created-by <user_id>
+ntion search --query "release notes" --limit 25
+ntion search --query "infra" --object page --created-after 2026-01-01T00:00:00Z
+ntion search --query "oncall" --scope <page_or_data_source_id> --created-by <user_id>
 ```
 
 ### Data sources
 
 ```bash
-notcli data-sources list --query "tasks"
-notcli data-sources get --id <data_source_id> --view full
-notcli data-sources schema --id <data_source_id>
-notcli data-sources query --id <data_source_id> \
+ntion data-sources list --query "tasks"
+ntion data-sources get --id <data_source_id> --view full
+ntion data-sources schema --id <data_source_id>
+ntion data-sources query --id <data_source_id> \
   --filter-json '{"property":"Status","status":{"equals":"In Progress"}}'
 ```
 
 ### Pages
 
 ```bash
-notcli pages get --id <page_id>
-notcli pages get --id <page_id> --include-content --content-format markdown
+ntion pages get --id <page_id>
+ntion pages get --id <page_id> --include-content --content-format markdown
 
-notcli pages create \
+ntion pages create \
   --parent-data-source-id <data_source_id> \
   --properties-json '{"Name":"Ship CLI","Status":"In Progress"}'
 
-notcli pages create-bulk \
+ntion pages create-bulk \
   --parent-data-source-id <data_source_id> \
   --items-json '[{"properties":{"Name":"Task A"}},{"properties":{"Name":"Task B"}}]' \
   --concurrency 5
 
-notcli pages update --id <page_id> --patch-json '{"Status":"Done"}'
-notcli pages archive --id <page_id>
-notcli pages unarchive --id <page_id>
+ntion pages update --id <page_id> --patch-json '{"Status":"Done"}'
+ntion pages archive --id <page_id>
+ntion pages unarchive --id <page_id>
 
-notcli pages relate --from-id <page_id> --property Project --to-id <page_id>
-notcli pages unrelate --from-id <page_id> --property Project --to-id <page_id>
+ntion pages relate --from-id <page_id> --property Project --to-id <page_id>
+ntion pages unrelate --from-id <page_id> --property Project --to-id <page_id>
 ```
 
 ### Blocks
 
 ```bash
 # Read as markdown (default)
-notcli blocks get --id <page_or_block_id> --depth 1
+ntion blocks get --id <page_or_block_id> --depth 1
 
 # Append markdown content
-notcli blocks append --id <page_or_block_id> --markdown "# Title\n\nHello"
-notcli blocks append --id <page_or_block_id> --markdown-file ./notes.md
+ntion blocks append --id <page_or_block_id> --markdown "# Title\n\nHello"
+ntion blocks append --id <page_or_block_id> --markdown-file ./notes.md
 
 # Surgical insertion
-notcli blocks insert --parent-id <page_or_block_id> --markdown "New intro" --position start
-notcli blocks insert --parent-id <page_or_block_id> --markdown "After this" --after-id <block_id>
+ntion blocks insert --parent-id <page_or_block_id> --markdown "New intro" --position start
+ntion blocks insert --parent-id <page_or_block_id> --markdown "After this" --after-id <block_id>
 
 # Find and replace block ranges
-notcli blocks select \
+ntion blocks select \
   --scope-id <page_or_block_id> \
   --selector-json '{"where":{"type":"paragraph","text_contains":"TODO"}}'
 
-notcli blocks replace-range \
+ntion blocks replace-range \
   --scope-id <page_or_block_id> \
   --start-selector-json '{"where":{"text_contains":"Start"}}' \
   --end-selector-json '{"where":{"text_contains":"End"}}' \
@@ -154,7 +154,7 @@ notcli blocks replace-range \
 ### Health check
 
 ```bash
-notcli doctor
+ntion doctor
 ```
 
 ## Output format
@@ -193,7 +193,7 @@ Compact, deterministic, easy to parse — by humans or machines.
 
 ## Storage
 
-Config and state are stored in `~/.config/notcli/` (or `$XDG_CONFIG_HOME/notcli/`):
+Config and state are stored in `~/.config/ntion/` (or `$XDG_CONFIG_HOME/ntion/`):
 
 - `config.json` — auth and defaults
 - `idempotency.json` — short-lived mutation dedup cache (auto-pruned)
