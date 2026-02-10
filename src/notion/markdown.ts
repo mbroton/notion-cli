@@ -12,13 +12,196 @@ function chunkText(content: string): string[] {
   return chunks;
 }
 
-function toRichText(content: string): Array<{ type: "text"; text: { content: string } }> {
+interface InlineAnnotations {
+  bold: boolean;
+  italic: boolean;
+  strikethrough: boolean;
+  code: boolean;
+}
+
+interface InlineSegment {
+  content: string;
+  annotations: InlineAnnotations;
+  link?: string;
+}
+
+const DEFAULT_ANNOTATIONS: InlineAnnotations = {
+  bold: false,
+  italic: false,
+  strikethrough: false,
+  code: false,
+};
+
+function findClosingStar(text: string, start: number): number {
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "*" && text[i + 1] !== "*" && text[i - 1] !== "*") {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function parseInlineSegments(
+  text: string,
+  inherited: InlineAnnotations,
+  linkUrl?: string,
+): InlineSegment[] {
+  const segments: InlineSegment[] = [];
+  let i = 0;
+  let plain = "";
+
+  const flush = (): void => {
+    if (plain) {
+      segments.push({ content: plain, annotations: { ...inherited }, link: linkUrl });
+      plain = "";
+    }
+  };
+
+  while (i < text.length) {
+    // Inline code (no nesting inside)
+    if (text[i] === "`") {
+      const close = text.indexOf("`", i + 1);
+      if (close !== -1) {
+        flush();
+        segments.push({
+          content: text.slice(i + 1, close),
+          annotations: { ...inherited, code: true },
+          link: linkUrl,
+        });
+        i = close + 1;
+        continue;
+      }
+    }
+
+    // Link [text](url)
+    if (text[i] === "[") {
+      const bracketClose = text.indexOf("]", i + 1);
+      if (bracketClose !== -1 && text[bracketClose + 1] === "(") {
+        const parenClose = text.indexOf(")", bracketClose + 2);
+        if (parenClose !== -1) {
+          flush();
+          const linkText = text.slice(i + 1, bracketClose);
+          const url = text.slice(bracketClose + 2, parenClose);
+          segments.push(...parseInlineSegments(linkText, inherited, url));
+          i = parenClose + 1;
+          continue;
+        }
+      }
+    }
+
+    // *** bold+italic
+    if (text[i] === "*" && text[i + 1] === "*" && text[i + 2] === "*") {
+      const close = text.indexOf("***", i + 3);
+      if (close !== -1) {
+        flush();
+        segments.push(
+          ...parseInlineSegments(
+            text.slice(i + 3, close),
+            { ...inherited, bold: true, italic: true },
+            linkUrl,
+          ),
+        );
+        i = close + 3;
+        continue;
+      }
+    }
+
+    // ** bold
+    if (text[i] === "*" && text[i + 1] === "*") {
+      const close = text.indexOf("**", i + 2);
+      if (close !== -1) {
+        flush();
+        segments.push(
+          ...parseInlineSegments(
+            text.slice(i + 2, close),
+            { ...inherited, bold: true },
+            linkUrl,
+          ),
+        );
+        i = close + 2;
+        continue;
+      }
+    }
+
+    // * italic
+    if (text[i] === "*") {
+      const close = findClosingStar(text, i + 1);
+      if (close !== -1) {
+        flush();
+        segments.push(
+          ...parseInlineSegments(
+            text.slice(i + 1, close),
+            { ...inherited, italic: true },
+            linkUrl,
+          ),
+        );
+        i = close + 1;
+        continue;
+      }
+    }
+
+    // ~~ strikethrough
+    if (text[i] === "~" && text[i + 1] === "~") {
+      const close = text.indexOf("~~", i + 2);
+      if (close !== -1) {
+        flush();
+        segments.push(
+          ...parseInlineSegments(
+            text.slice(i + 2, close),
+            { ...inherited, strikethrough: true },
+            linkUrl,
+          ),
+        );
+        i = close + 2;
+        continue;
+      }
+    }
+
+    plain += text[i];
+    i++;
+  }
+
+  flush();
+  return segments;
+}
+
+function segmentToRichText(segment: InlineSegment): Array<Record<string, unknown>> {
+  return chunkText(segment.content).map((chunk) => {
+    const textObj: Record<string, unknown> = { content: chunk };
+    if (segment.link) {
+      textObj.link = { url: segment.link };
+    }
+
+    const obj: Record<string, unknown> = { type: "text", text: textObj };
+
+    const { bold, italic, strikethrough, code } = segment.annotations;
+    if (bold || italic || strikethrough || code) {
+      const annotations: Record<string, boolean> = {};
+      if (bold) annotations.bold = true;
+      if (italic) annotations.italic = true;
+      if (strikethrough) annotations.strikethrough = true;
+      if (code) annotations.code = true;
+      obj.annotations = annotations;
+    }
+
+    return obj;
+  });
+}
+
+function toRichText(content: string): Array<Record<string, unknown>> {
+  const normalized = content.length > 0 ? content : " ";
+  const segments = parseInlineSegments(normalized, DEFAULT_ANNOTATIONS);
+  if (segments.length === 0) {
+    return [{ type: "text", text: { content: " " } }];
+  }
+  return segments.flatMap(segmentToRichText);
+}
+
+function toPlainRichText(content: string): Array<Record<string, unknown>> {
   const normalized = content.length > 0 ? content : " ";
   return chunkText(normalized).map((chunk) => ({
     type: "text",
-    text: {
-      content: chunk,
-    },
+    text: { content: chunk },
   }));
 }
 
@@ -144,7 +327,7 @@ function codeBlock(text: string, language: string): Record<string, unknown> {
     object: "block",
     type: "code",
     code: {
-      rich_text: toRichText(text),
+      rich_text: toPlainRichText(text),
       language,
     },
   };
