@@ -299,6 +299,7 @@ async function runInteractiveAuthSetup(): Promise<string> {
 
   const rl = createInterface({ input, output });
   try {
+    console.log("Create a token at https://www.notion.so/profile/integrations\n");
     const response = await rl.question("Paste your Notion integration token: ");
     const trimmed = response.trim();
     if (!trimmed) {
@@ -343,9 +344,14 @@ async function saveAuthConfigEnv(tokenEnv: string): Promise<{ token_env: string;
   };
 }
 
+const packageJson = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf-8"),
+);
+
 const program = new Command();
 program
   .name("ntion")
+  .version(packageJson.version, "-V, --version", "print version number")
   .description("Token-efficient, workspace-agnostic Notion CLI")
   .showHelpAfterError()
   .addHelpText("after", ROOT_HELP_EPILOG);
