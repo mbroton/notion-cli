@@ -185,4 +185,93 @@ describe("markdownToBlocks", () => {
       });
     });
   });
+
+  describe("images", () => {
+    it("parses ![alt](url) as an image block", () => {
+      const blocks = markdownToBlocks("![my image](https://example.com/img.png)");
+
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].type).toBe("image");
+      const img = blocks[0].image as Record<string, unknown>;
+      expect(img.type).toBe("external");
+      expect((img.external as { url: string }).url).toBe("https://example.com/img.png");
+    });
+
+    it("uses alt text as caption", () => {
+      const blocks = markdownToBlocks("![a caption](https://example.com/img.png)");
+      const img = blocks[0].image as Record<string, unknown>;
+      const caption = img.caption as Array<Record<string, unknown>>;
+      expect(caption).toHaveLength(1);
+      expect(getTextContent(caption[0])).toBe("a caption");
+    });
+
+    it("does not treat image syntax mid-paragraph as image block", () => {
+      const blocks = markdownToBlocks("text before ![img](https://example.com/img.png)");
+      expect(blocks[0].type).toBe("paragraph");
+    });
+  });
+
+  describe("tables", () => {
+    it("parses a simple table", () => {
+      const markdown = [
+        "| Name | Age |",
+        "| --- | --- |",
+        "| Alice | 30 |",
+        "| Bob | 25 |",
+      ].join("\n");
+      const blocks = markdownToBlocks(markdown);
+
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].type).toBe("table");
+      const table = blocks[0].table as Record<string, unknown>;
+      expect(table.table_width).toBe(2);
+      expect(table.has_column_header).toBe(true);
+      const children = table.children as Array<Record<string, unknown>>;
+      expect(children).toHaveLength(3);
+    });
+
+    it("parses table without header separator", () => {
+      const markdown = [
+        "| A | B |",
+        "| C | D |",
+      ].join("\n");
+      const blocks = markdownToBlocks(markdown);
+
+      const table = blocks[0].table as Record<string, unknown>;
+      expect(table.has_column_header).toBe(false);
+      const children = table.children as Array<Record<string, unknown>>;
+      expect(children).toHaveLength(2);
+    });
+
+    it("preserves inline formatting in table cells", () => {
+      const markdown = [
+        "| **bold** | *italic* |",
+        "| --- | --- |",
+        "| plain | `code` |",
+      ].join("\n");
+      const blocks = markdownToBlocks(markdown);
+
+      const table = blocks[0].table as Record<string, unknown>;
+      const children = table.children as Array<Record<string, unknown>>;
+      const headerRow = children[0].table_row as Record<string, unknown>;
+      const cells = headerRow.cells as Array<Array<Record<string, unknown>>>;
+      expect(getTextContent(cells[0][0])).toBe("bold");
+      expect(cells[0][0].annotations).toEqual({ bold: true });
+    });
+
+    it("table followed by paragraph produces two blocks", () => {
+      const markdown = [
+        "| A | B |",
+        "| --- | --- |",
+        "| C | D |",
+        "",
+        "Some text",
+      ].join("\n");
+      const blocks = markdownToBlocks(markdown);
+
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0].type).toBe("table");
+      expect(blocks[1].type).toBe("paragraph");
+    });
+  });
 });

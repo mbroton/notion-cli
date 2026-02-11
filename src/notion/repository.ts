@@ -760,6 +760,58 @@ function extractBlockText(block: Record<string, unknown>): string | null {
     .join("");
 }
 
+function richTextToMarkdown(richTextArray: Array<Record<string, unknown>>): string {
+  return richTextArray
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+
+      const plain = (item as { plain_text?: unknown }).plain_text;
+      if (typeof plain !== "string") return "";
+
+      const annotations = (item as { annotations?: Record<string, unknown> }).annotations;
+      const href =
+        (item as { href?: unknown }).href ??
+        ((item as { text?: { link?: { url?: unknown } } }).text?.link?.url ?? null);
+
+      let result = plain;
+
+      if (annotations?.code) {
+        result = `\`${result}\``;
+      } else {
+        if (annotations?.bold && annotations?.italic) {
+          result = `***${result}***`;
+        } else if (annotations?.bold) {
+          result = `**${result}**`;
+        } else if (annotations?.italic) {
+          result = `*${result}*`;
+        }
+        if (annotations?.strikethrough) {
+          result = `~~${result}~~`;
+        }
+      }
+
+      if (typeof href === "string") {
+        result = `[${result}](${href})`;
+      }
+
+      return result;
+    })
+    .join("");
+}
+
+function extractBlockMarkdown(block: Record<string, unknown>): string | null {
+  const type = block.type;
+  if (typeof type !== "string") return null;
+
+  const typedData = block[type] as Record<string, unknown> | undefined;
+  if (!typedData || typeof typedData !== "object") return null;
+
+  const richText = typedData.rich_text;
+  if (!Array.isArray(richText)) return null;
+
+  return richTextToMarkdown(richText);
+}
+
 function toCompactBlock(block: Record<string, unknown>): Record<string, unknown> {
   return {
     id: block.id ?? null,
@@ -828,7 +880,7 @@ function renderQuoteMarkdown(text: string, indent: string): string {
 
 function renderBlockToMarkdown(block: Record<string, unknown>, depth: number): string {
   const type = typeof block.type === "string" ? block.type : "unsupported";
-  const text = extractBlockText(block) ?? "";
+  const text = extractBlockMarkdown(block) ?? "";
   const indent = "  ".repeat(depth);
   const children = collectRenderableChildren(block);
   const childMarkdown = children.length > 0 ? renderBlocksToMarkdown(children, depth + 1) : "";
@@ -879,6 +931,41 @@ function renderBlockToMarkdown(block: Record<string, unknown>, depth: number): s
     }
     case "toggle":
       return withChildren(`${indent}- ${text}`, true);
+    case "image": {
+      const img = block.image as Record<string, unknown> | undefined;
+      let imgUrl = "";
+      if (img) {
+        if (img.type === "external") {
+          const ext = img.external as { url?: string } | undefined;
+          imgUrl = ext?.url ?? "";
+        } else {
+          const file = img.file as { url?: string } | undefined;
+          imgUrl = file?.url ?? "";
+        }
+      }
+      const caption = img && Array.isArray(img.caption) ? richTextToMarkdown(img.caption) : "";
+      return withChildren(`${indent}![${caption}](${imgUrl})`);
+    }
+    case "table": {
+      const tbl = block.table as { has_column_header?: boolean } | undefined;
+      const rows = children;
+      const rowLines: string[] = [];
+      for (let ri = 0; ri < rows.length; ri++) {
+        const row = rows[ri];
+        const tr = row.table_row as { cells?: Array<Array<Record<string, unknown>>> } | undefined;
+        if (!tr?.cells) continue;
+        const cellTexts = tr.cells.map(
+          (cell) => richTextToMarkdown(cell).replace(/\|/g, "\\|"),
+        );
+        rowLines.push(`${indent}| ${cellTexts.join(" | ")} |`);
+        if (ri === 0 && tbl?.has_column_header) {
+          rowLines.push(`${indent}| ${cellTexts.map(() => "---").join(" | ")} |`);
+        }
+      }
+      return rowLines.join("\n");
+    }
+    case "table_row":
+      return "";
     default: {
       const fallback = text.length > 0 ? text : `[${type}]`;
       return withChildren(`${indent}${fallback}`);

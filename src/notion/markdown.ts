@@ -333,6 +333,74 @@ function codeBlock(text: string, language: string): Record<string, unknown> {
   };
 }
 
+function imageBlock(url: string, caption: string): Record<string, unknown> {
+  return {
+    object: "block",
+    type: "image",
+    image: {
+      type: "external",
+      external: { url },
+      caption: toRichText(caption),
+    },
+  };
+}
+
+function parseMarkdownTable(
+  lines: string[],
+  startIndex: number,
+): { block: Record<string, unknown>; linesConsumed: number } {
+  const tableLines: string[] = [];
+  let i = startIndex;
+  while (i < lines.length && lines[i].trim().includes("|")) {
+    tableLines.push(lines[i].trim());
+    i++;
+  }
+  const linesConsumed = tableLines.length;
+
+  const parseCells = (line: string): string[] => {
+    let stripped = line;
+    if (stripped.startsWith("|")) stripped = stripped.slice(1);
+    if (stripped.endsWith("|")) stripped = stripped.slice(0, -1);
+    return stripped.split("|").map((c) => c.trim());
+  };
+
+  const isSeparator = (line: string): boolean => {
+    const cells = parseCells(line);
+    return cells.every((c) => /^[-:]+$/.test(c));
+  };
+
+  const hasColumnHeader = tableLines.length >= 2 && isSeparator(tableLines[1]);
+
+  const dataLines = tableLines.filter((_, idx) => !(hasColumnHeader && idx === 1));
+  const tableWidth = dataLines.length > 0 ? parseCells(dataLines[0]).length : 0;
+
+  const children = dataLines.map((line) => {
+    const cells = parseCells(line);
+    while (cells.length < tableWidth) cells.push("");
+    return {
+      object: "block",
+      type: "table_row",
+      table_row: {
+        cells: cells.slice(0, tableWidth).map((c) => toRichText(c)),
+      },
+    };
+  });
+
+  return {
+    block: {
+      object: "block",
+      type: "table",
+      table: {
+        table_width: tableWidth,
+        has_column_header: hasColumnHeader,
+        has_row_header: false,
+        children,
+      },
+    },
+    linesConsumed,
+  };
+}
+
 function isDivider(trimmed: string): boolean {
   return trimmed === "---" || trimmed === "***" || trimmed === "___";
 }
@@ -384,6 +452,22 @@ export function markdownToBlocks(markdown: string): Array<Record<string, unknown
       flushParagraph();
       blocks.push(dividerBlock());
       index += 1;
+      continue;
+    }
+
+    const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (imageMatch) {
+      flushParagraph();
+      blocks.push(imageBlock(imageMatch[2], imageMatch[1]));
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("|")) {
+      flushParagraph();
+      const result = parseMarkdownTable(lines, index);
+      blocks.push(result.block);
+      index += result.linesConsumed;
       continue;
     }
 
