@@ -40,7 +40,7 @@ A single "get all my tasks" workflow tells the whole story:
 The official Notion MCP server has no block delete tool. ntion does:
 
 ```bash
-ntion blocks delete --block-ids <block_id>
+ntion blocks delete --ids <block_id>
 ```
 
 Delete one or many blocks in a single call — useful for cleaning up content, removing broken blocks, or precise page editing.
@@ -148,8 +148,8 @@ ntion pages unrelate --from-id <page_id> --property Project --to-id <page_id>
 ```bash
 # Read as markdown (default)
 ntion blocks get --id <page_or_block_id> --depth 1
-ntion blocks get --id <page_or_block_id> --view full
-# blocks get uses --view (markdown|compact|full)
+ntion blocks get --id <page_or_block_id> --format full
+# blocks get uses --format (markdown|compact|full)
 
 # Append markdown content
 ntion blocks append --id <page_or_block_id> --markdown $'# Title\n\nHello'
@@ -171,8 +171,8 @@ ntion blocks replace-range \
   --markdown "Replacement content"
 
 # Delete blocks (not available in the official Notion MCP)
-ntion blocks delete --block-ids <block_id>
-ntion blocks delete --block-ids <id1> <id2> <id3>
+ntion blocks delete --ids <block_id>
+ntion blocks delete --ids <id1> <id2> <id3>
 ```
 
 ### Health check

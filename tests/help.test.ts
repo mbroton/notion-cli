@@ -54,23 +54,43 @@ describe("help discoverability", () => {
 
   it("defaults blocks get to markdown format", () => {
     const output = runCli(["blocks", "get", "--help"]);
-    expect(output).toContain("--view <markdown|compact|full>");
+    expect(output).toContain("--format <markdown|compact|full>");
     expect(output).toContain("(default: \"markdown\")");
   });
 
-  it("rejects deprecated blocks get --format with migration guidance", () => {
+  it("rejects removed blocks get --view flag", () => {
     const cliPath = resolve(process.cwd(), "src/cli.ts");
     const result = spawnSync(
       process.execPath,
-      ["--import", "tsx", cliPath, "blocks", "get", "--id", "page-1", "--format", "full"],
+      ["--import", "tsx", cliPath, "blocks", "get", "--id", "page-1", "--view", "full"],
       {
         cwd: process.cwd(),
         encoding: "utf8",
       },
     );
 
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("\"code\":\"invalid_input\"");
-    expect(result.stderr).toContain("Use --view <markdown|compact|full>");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("unknown option '--view'");
+  });
+
+  it("surfaces ids flag in blocks delete help", () => {
+    const output = runCli(["blocks", "delete", "--help"]);
+    expect(output).toContain("--ids <ids...>");
+    expect(output).not.toContain("--block-ids");
+  });
+
+  it("rejects removed blocks delete --block-ids flag", () => {
+    const cliPath = resolve(process.cwd(), "src/cli.ts");
+    const result = spawnSync(
+      process.execPath,
+      ["--import", "tsx", cliPath, "blocks", "delete", "--block-ids", "b1"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("required option '--ids <ids...>' not specified");
   });
 });

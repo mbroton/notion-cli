@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { executeMutationWithIdempotency } from "./commands/mutation.js";
@@ -108,8 +108,8 @@ const BLOCKS_APPEND_HELP_EPILOG = [
 
 const BLOCKS_GET_HELP_EPILOG = [
   "",
-  "View vs Return-View:",
-  "  blocks get uses --view <markdown|compact|full>.",
+  "Format vs Return-View:",
+  "  blocks get uses --format <markdown|compact|full>.",
   "  mutation commands use --return-view <compact|full> for page/data outputs.",
 ].join("\n");
 
@@ -159,7 +159,7 @@ function resolveBlockReadFormat(input: string | undefined, fallback: BlockReadFo
   if (value === "markdown" || value === "compact" || value === "full") {
     return value;
   }
-  throw new CliError("invalid_input", "Block view must be markdown, compact, or full.");
+  throw new CliError("invalid_input", "Block format must be markdown, compact, or full.");
 }
 
 function parseSearchObject(raw: string | undefined): SearchObjectType | undefined {
@@ -1118,8 +1118,7 @@ const blocksGetCommand = blocksCommand
   .requiredOption("--id <page_or_block_id>", "Notion page or block ID")
   .option("--max-blocks <n>", "Maximum block count")
   .option("--depth <n>", "Recursion depth", "1")
-  .option("--view <markdown|compact|full>", "content view", "markdown")
-  .addOption(new Option("--format <markdown|compact|full>").hideHelp())
+  .option("--format <markdown|compact|full>", "content format", "markdown")
   .option("--pretty", "pretty-print JSON output")
   .option("--timeout-ms <n>", "request timeout in milliseconds")
   .action(
@@ -1127,24 +1126,17 @@ const blocksGetCommand = blocksCommand
       id: string;
       maxBlocks?: string;
       depth?: string;
-      view?: string;
       format?: string;
       pretty?: boolean;
       timeoutMs?: string;
     }) => {
       await runAction(Boolean(options.pretty), async () => {
-        if (options.format) {
-          throw new CliError(
-            "invalid_input",
-            "--format is no longer supported for blocks get. Use --view <markdown|compact|full>.",
-          );
-        }
         const { config, notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
         const maxBlocks = parsePositiveInt(options.maxBlocks, "max-blocks", config.defaults.max_blocks);
         const depth = parsePositiveInt(options.depth, "depth", 1);
-        const view = resolveBlockReadFormat(options.view, "markdown");
+        const format = resolveBlockReadFormat(options.format, "markdown");
 
-        const blocks = await getBlocks(notion, options.id, maxBlocks, depth, view);
+        const blocks = await getBlocks(notion, options.id, maxBlocks, depth, format);
         return {
           data: blocks,
         };
@@ -1383,12 +1375,12 @@ blocksReplaceRangeCommand.addHelpText("after", BLOCKS_REPLACE_RANGE_HELP_EPILOG)
 blocksCommand
   .command("delete")
   .description("Delete one or more blocks by ID")
-  .requiredOption("--block-ids <ids...>", "Block IDs to delete")
+  .requiredOption("--ids <ids...>", "Block IDs to delete")
   .option("--pretty", "pretty-print JSON output")
   .option("--timeout-ms <n>", "request timeout in milliseconds")
   .action(
     async (options: {
-      blockIds: string[];
+      ids: string[];
       pretty?: boolean;
       timeoutMs?: string;
     }) => {
@@ -1398,17 +1390,17 @@ blocksCommand
         const result = await executeMutationWithIdempotency({
           commandName: "blocks.delete",
           requestId,
-          requestShape: { block_ids: options.blockIds },
-          targetIds: options.blockIds,
-          run: () => deleteBlocks(notion, { blockIds: options.blockIds }),
+          requestShape: { block_ids: options.ids },
+          targetIds: options.ids,
+          run: () => deleteBlocks(notion, { blockIds: options.ids }),
           recover: async () => {
-            const deleted = await areBlocksDeleted(notion, options.blockIds);
+            const deleted = await areBlocksDeleted(notion, options.ids);
             if (!deleted) {
               return null;
             }
             return {
-              deleted_count: options.blockIds.length,
-              deleted_ids: options.blockIds,
+              deleted_count: options.ids.length,
+              deleted_ids: options.ids,
             };
           },
         });

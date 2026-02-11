@@ -87,7 +87,7 @@ ntion pages unrelate --from-id <id> --property "Project" --to-id <target_id>
 ```bash
 # Read content as markdown
 ntion blocks get --id <page_or_block_id>
-ntion blocks get --id <id> --depth 2 --view compact
+ntion blocks get --id <id> --depth 2 --format compact
 
 # Append to end
 ntion blocks append --id <id> --markdown $'## Section\n\nContent here'
@@ -110,8 +110,8 @@ ntion blocks replace-range \
   --markdown "## New Section\n\nUpdated content"
 
 # Delete blocks
-ntion blocks delete --block-ids <block_id>
-ntion blocks delete --block-ids <id1> <id2> <id3>
+ntion blocks delete --ids <block_id>
+ntion blocks delete --ids <id1> <id2> <id3>
 ```
 
 ## Workflow patterns
@@ -128,7 +128,7 @@ ntion blocks delete --block-ids <id1> <id2> <id3>
 1. Read current content: `ntion blocks get --id <page_id>`
 2. Append new content: `ntion blocks append --id <page_id> --markdown "..."`
 3. Or replace a section: use `blocks replace-range` with selectors
-4. Delete specific blocks: `ntion blocks delete --block-ids <id1> <id2>`
+4. Delete specific blocks: `ntion blocks delete --ids <id1> <id2>`
 
 ## Output format
 
