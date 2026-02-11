@@ -22,6 +22,10 @@ export function getIdempotencyStorePath(): string {
   return join(getConfigDir(), "idempotency.json");
 }
 
+export function getIdempotencyLockPath(): string {
+  return join(getConfigDir(), "idempotency.lock");
+}
+
 export function ensureConfigDir(): string {
   const configDir = getConfigDir();
   if (!existsSync(configDir)) {

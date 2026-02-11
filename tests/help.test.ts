@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -54,7 +54,23 @@ describe("help discoverability", () => {
 
   it("defaults blocks get to markdown format", () => {
     const output = runCli(["blocks", "get", "--help"]);
-    expect(output).toContain("--format <markdown|compact|full>");
+    expect(output).toContain("--view <markdown|compact|full>");
     expect(output).toContain("(default: \"markdown\")");
+  });
+
+  it("rejects deprecated blocks get --format with migration guidance", () => {
+    const cliPath = resolve(process.cwd(), "src/cli.ts");
+    const result = spawnSync(
+      process.execPath,
+      ["--import", "tsx", cliPath, "blocks", "get", "--id", "page-1", "--format", "full"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("\"code\":\"invalid_input\"");
+    expect(result.stderr).toContain("Use --view <markdown|compact|full>");
   });
 });

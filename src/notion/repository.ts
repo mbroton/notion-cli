@@ -196,6 +196,132 @@ function readRelationProperty(page: Record<string, unknown>, propertyName: strin
     .filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
+function collectFilterPropertyRefs(
+  value: unknown,
+  refs: Set<string>,
+): void {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectFilterPropertyRefs(item, refs);
+    }
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.property === "string" && record.property.length > 0) {
+    refs.add(record.property);
+  }
+
+  for (const child of Object.values(record)) {
+    collectFilterPropertyRefs(child, refs);
+  }
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  const left = a.toLowerCase();
+  const right = b.toLowerCase();
+
+  if (left === right) {
+    return 0;
+  }
+
+  const matrix: number[][] = Array.from({ length: left.length + 1 }, () =>
+    new Array(right.length + 1).fill(0),
+  );
+
+  for (let i = 0; i <= left.length; i += 1) {
+    matrix[i][0] = i;
+  }
+  for (let j = 0; j <= right.length; j += 1) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= left.length; i += 1) {
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return matrix[left.length][right.length];
+}
+
+function suggestPropertyNames(raw: string, candidates: string[]): string[] {
+  const target = raw.toLowerCase();
+  return [...candidates]
+    .sort((a, b) => {
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+
+      const aStarts = aLower.startsWith(target) ? 0 : 1;
+      const bStarts = bLower.startsWith(target) ? 0 : 1;
+      if (aStarts !== bStarts) {
+        return aStarts - bStarts;
+      }
+
+      const aContains = aLower.includes(target) ? 0 : 1;
+      const bContains = bLower.includes(target) ? 0 : 1;
+      if (aContains !== bContains) {
+        return aContains - bContains;
+      }
+
+      const distanceDiff = levenshteinDistance(raw, a) - levenshteinDistance(raw, b);
+      if (distanceDiff !== 0) {
+        return distanceDiff;
+      }
+      return a.localeCompare(b);
+    })
+    .slice(0, 3);
+}
+
+async function validateDataSourceFilterProperties(
+  ctx: RepositoryContext,
+  dataSourceId: string,
+  filter: Record<string, unknown> | undefined,
+): Promise<void> {
+  if (!filter) {
+    return;
+  }
+
+  const refs = new Set<string>();
+  collectFilterPropertyRefs(filter, refs);
+  if (refs.size === 0) {
+    return;
+  }
+
+  const schema = await hydrateDataSourceSchema(ctx, dataSourceId);
+  const validNames = Object.keys(schema);
+  const validIds = new Set(
+    Object.values(schema)
+      .map((entry) => entry.id)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  );
+
+  for (const property of refs) {
+    if (schema[property] || validIds.has(property)) {
+      continue;
+    }
+
+    const suggestions = suggestPropertyNames(property, validNames);
+    const suggestionText =
+      suggestions.length > 0
+        ? ` Did you mean ${suggestions.map((name) => `"${name}"`).join(", ")}?`
+        : "";
+    throw new CliError(
+      "invalid_input",
+      `Unknown filter property "${property}" for this data source.${suggestionText}`,
+    );
+  }
+}
+
 async function withBestEffortPageMutation(
   ctx: RepositoryContext,
   pageId: string,
@@ -442,6 +568,8 @@ export async function queryDataSourcePages(
   ctx: RepositoryContext,
   input: QueryPagesInput,
 ): Promise<{ records: Record<string, unknown>[]; pagination: PaginationResult }> {
+  await validateDataSourceFilterProperties(ctx, input.dataSourceId, input.filter);
+
   const payload: Record<string, unknown> = {
     data_source_id: input.dataSourceId,
     page_size: Math.min(Math.max(1, input.limit), 100),
@@ -1598,4 +1726,26 @@ export async function deleteBlocks(
     deleted_count: deletedIds.length,
     deleted_ids: deletedIds,
   };
+}
+
+export async function areBlocksDeleted(
+  notion: NotionClientAdapter,
+  blockIds: string[],
+): Promise<boolean> {
+  for (const blockId of blockIds) {
+    try {
+      const block = asRecord(await notion.retrieveBlock(blockId));
+      if (block.archived !== true) {
+        return false;
+      }
+    } catch (error) {
+      const status = getStatus(error);
+      if (status === 404) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return true;
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { executeMutationWithIdempotency } from "./commands/mutation.js";
@@ -14,6 +14,7 @@ import { markdownToBlocks } from "./notion/markdown.js";
 import {
   appendBlocks,
   archivePage,
+  areBlocksDeleted,
   BlockInsertPosition,
   BlockReadFormat,
   BlockSelector,
@@ -101,8 +102,15 @@ const BLOCKS_APPEND_HELP_EPILOG = [
   "  Provide exactly one of --blocks-json, --markdown, or --markdown-file.",
   "",
   "Examples:",
-  "  ntion blocks append --id <id> --markdown \"# Heading\\n\\nBody\"",
+  "  ntion blocks append --id <id> --markdown $'# Heading\\n\\nBody'",
   "  ntion blocks append --id <id> --markdown-file ./notes.md",
+].join("\n");
+
+const BLOCKS_GET_HELP_EPILOG = [
+  "",
+  "View vs Return-View:",
+  "  blocks get uses --view <markdown|compact|full>.",
+  "  mutation commands use --return-view <compact|full> for page/data outputs.",
 ].join("\n");
 
 const BLOCKS_INSERT_HELP_EPILOG = [
@@ -151,7 +159,7 @@ function resolveBlockReadFormat(input: string | undefined, fallback: BlockReadFo
   if (value === "markdown" || value === "compact" || value === "full") {
     return value;
   }
-  throw new CliError("invalid_input", "Block format must be markdown, compact, or full.");
+  throw new CliError("invalid_input", "Block view must be markdown, compact, or full.");
 }
 
 function parseSearchObject(raw: string | undefined): SearchObjectType | undefined {
@@ -260,11 +268,38 @@ async function resolveBlocksInput(args: {
   }
 
   if (args.markdown) {
+    validateMarkdownInput(args.markdown);
     return markdownToBlocks(args.markdown);
   }
 
   const markdown = await readFile(String(args.markdownFile), "utf8");
   return markdownToBlocks(markdown);
+}
+
+function validateMarkdownInput(markdown: string): void {
+  if (markdown.includes("\\n") && !markdown.includes("\n")) {
+    throw new CliError(
+      "invalid_input",
+      "--markdown appears to contain literal \\n escapes. Use real newline characters or --markdown-file.",
+    );
+  }
+}
+
+function relationIncludesTarget(
+  page: Record<string, unknown>,
+  propertyName: string,
+  targetId: string,
+): boolean {
+  const properties = page.properties;
+  if (!properties || typeof properties !== "object") {
+    return false;
+  }
+
+  const relationValue = (properties as Record<string, unknown>)[propertyName];
+  return (
+    Array.isArray(relationValue) &&
+    relationValue.some((value) => typeof value === "string" && value === targetId)
+  );
 }
 
 function addCommonReadOptions(command: Command): Command {
@@ -860,6 +895,16 @@ addCommonMutationOptions(pagesCommand.command("archive").description("Archive a 
                 fields,
               },
             ),
+          recover: async () => {
+            const current = await getPage(notion, options.id, "full");
+            if (current.archived !== true) {
+              return null;
+            }
+            if (view === "full") {
+              return current;
+            }
+            return getPage(notion, options.id, view, fields);
+          },
         });
 
         return {
@@ -908,6 +953,16 @@ addCommonMutationOptions(pagesCommand.command("unarchive").description("Unarchiv
                 fields,
               },
             ),
+          recover: async () => {
+            const current = await getPage(notion, options.id, "full");
+            if (current.archived !== false) {
+              return null;
+            }
+            if (view === "full") {
+              return current;
+            }
+            return getPage(notion, options.id, view, fields);
+          },
         });
 
         return {
@@ -965,6 +1020,16 @@ addCommonMutationOptions(pagesCommand.command("relate").description("Add a relat
                 fields,
               },
             ),
+          recover: async () => {
+            const current = await getPage(notion, options.fromId, "full");
+            if (!relationIncludesTarget(current, options.property, options.toId)) {
+              return null;
+            }
+            if (view === "full") {
+              return current;
+            }
+            return getPage(notion, options.fromId, view, fields);
+          },
         });
 
         return {
@@ -1024,6 +1089,16 @@ addCommonMutationOptions(
                 fields,
               },
             ),
+          recover: async () => {
+            const current = await getPage(notion, options.fromId, "full");
+            if (relationIncludesTarget(current, options.property, options.toId)) {
+              return null;
+            }
+            if (view === "full") {
+              return current;
+            }
+            return getPage(notion, options.fromId, view, fields);
+          },
         });
 
         return {
@@ -1037,13 +1112,14 @@ addCommonMutationOptions(
 
 const blocksCommand = program.command("blocks").description("Block operations");
 
-blocksCommand
+const blocksGetCommand = blocksCommand
   .command("get")
   .description("Get blocks from a page or block")
   .requiredOption("--id <page_or_block_id>", "Notion page or block ID")
   .option("--max-blocks <n>", "Maximum block count")
   .option("--depth <n>", "Recursion depth", "1")
-  .option("--format <markdown|compact|full>", "content format", "markdown")
+  .option("--view <markdown|compact|full>", "content view", "markdown")
+  .addOption(new Option("--format <markdown|compact|full>").hideHelp())
   .option("--pretty", "pretty-print JSON output")
   .option("--timeout-ms <n>", "request timeout in milliseconds")
   .action(
@@ -1051,23 +1127,31 @@ blocksCommand
       id: string;
       maxBlocks?: string;
       depth?: string;
+      view?: string;
       format?: string;
       pretty?: boolean;
       timeoutMs?: string;
     }) => {
       await runAction(Boolean(options.pretty), async () => {
+        if (options.format) {
+          throw new CliError(
+            "invalid_input",
+            "--format is no longer supported for blocks get. Use --view <markdown|compact|full>.",
+          );
+        }
         const { config, notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
         const maxBlocks = parsePositiveInt(options.maxBlocks, "max-blocks", config.defaults.max_blocks);
         const depth = parsePositiveInt(options.depth, "depth", 1);
-        const format = resolveBlockReadFormat(options.format, "markdown");
+        const view = resolveBlockReadFormat(options.view, "markdown");
 
-        const blocks = await getBlocks(notion, options.id, maxBlocks, depth, format);
+        const blocks = await getBlocks(notion, options.id, maxBlocks, depth, view);
         return {
           data: blocks,
         };
       });
     },
   );
+blocksGetCommand.addHelpText("after", BLOCKS_GET_HELP_EPILOG);
 
 const blocksAppendCommand = blocksCommand
   .command("append")
@@ -1090,12 +1174,12 @@ const blocksAppendCommand = blocksCommand
       timeoutMs?: string;
     }) => {
       await runAction(Boolean(options.pretty), async (requestId) => {
-        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
         const blocks = await resolveBlocksInput({
           blocksJson: options.blocksJson,
           markdown: options.markdown,
           markdownFile: options.markdownFile,
         });
+        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
 
         const result = await executeMutationWithIdempotency({
           commandName: options.dryRun ? "blocks.append.dry_run" : "blocks.append",
@@ -1147,13 +1231,13 @@ const blocksInsertCommand = blocksCommand
       timeoutMs?: string;
     }) => {
       await runAction(Boolean(options.pretty), async (requestId) => {
-        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
         const blocks = await resolveBlocksInput({
           blocksJson: options.blocksJson,
           markdown: options.markdown,
           markdownFile: options.markdownFile,
         });
         const position = resolveInsertPosition(options.position, options.afterId);
+        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
 
         const result = await executeMutationWithIdempotency({
           commandName: options.dryRun ? "blocks.insert.dry_run" : "blocks.insert",
@@ -1248,7 +1332,6 @@ const blocksReplaceRangeCommand = blocksCommand
       timeoutMs?: string;
     }) => {
       await runAction(Boolean(options.pretty), async (requestId) => {
-        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
         const blocks = await resolveBlocksInput({
           blocksJson: options.blocksJson,
           markdown: options.markdown,
@@ -1260,6 +1343,7 @@ const blocksReplaceRangeCommand = blocksCommand
         );
         const endSelector = requireSelectorJson(options.endSelectorJson, "end-selector-json");
         const maxBlocks = parsePositiveInt(options.scanMaxBlocks, "scan-max-blocks", 5000);
+        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
 
         const result = await executeMutationWithIdempotency({
           commandName: options.dryRun ? "blocks.replace_range.dry_run" : "blocks.replace_range",
@@ -1317,6 +1401,16 @@ blocksCommand
           requestShape: { block_ids: options.blockIds },
           targetIds: options.blockIds,
           run: () => deleteBlocks(notion, { blockIds: options.blockIds }),
+          recover: async () => {
+            const deleted = await areBlocksDeleted(notion, options.blockIds);
+            if (!deleted) {
+              return null;
+            }
+            return {
+              deleted_count: options.blockIds.length,
+              deleted_ids: options.blockIds,
+            };
+          },
         });
 
         return {

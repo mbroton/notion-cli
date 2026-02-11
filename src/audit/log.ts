@@ -10,6 +10,10 @@ export interface AuditEvent {
   target_ids?: string[];
   ok: boolean;
   timestamp: string;
+  recovery_attempted?: boolean;
+  recovery_succeeded?: boolean;
+  idempotency_persist_degraded?: boolean;
+  outcome_uncertain?: boolean;
 }
 
 function hashKey(value: string | undefined): string | undefined {

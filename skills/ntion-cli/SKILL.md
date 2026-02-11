@@ -87,10 +87,10 @@ ntion pages unrelate --from-id <id> --property "Project" --to-id <target_id>
 ```bash
 # Read content as markdown
 ntion blocks get --id <page_or_block_id>
-ntion blocks get --id <id> --depth 2 --format compact
+ntion blocks get --id <id> --depth 2 --view compact
 
 # Append to end
-ntion blocks append --id <id> --markdown "## Section\n\nContent here"
+ntion blocks append --id <id> --markdown $'## Section\n\nContent here'
 ntion blocks append --id <id> --markdown-file ./notes.md
 
 # Insert at position
@@ -144,6 +144,6 @@ Exit codes: 0=success, 1=failure, 2=invalid input, 3=not found, 4=conflict, 5=re
 ## Notes
 
 - `--view compact` (default) returns minimal data. Use `--view full` when complete details are needed.
-- Mutations are idempotent — safe to retry on failure.
+- Mutations are idempotent with verify-first recovery on ambiguous outcomes. Re-read before retrying when the CLI reports uncertainty.
 - Bulk create supports `--concurrency` (default 5) for parallel operations.
 - Use `--pretty` on any command for human-readable JSON output.

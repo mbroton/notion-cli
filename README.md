@@ -148,9 +148,11 @@ ntion pages unrelate --from-id <page_id> --property Project --to-id <page_id>
 ```bash
 # Read as markdown (default)
 ntion blocks get --id <page_or_block_id> --depth 1
+ntion blocks get --id <page_or_block_id> --view full
+# blocks get uses --view (markdown|compact|full)
 
 # Append markdown content
-ntion blocks append --id <page_or_block_id> --markdown "# Title\n\nHello"
+ntion blocks append --id <page_or_block_id> --markdown $'# Title\n\nHello'
 ntion blocks append --id <page_or_block_id> --markdown-file ./notes.md
 
 # Surgical insertion
@@ -197,7 +199,7 @@ Compact, deterministic, easy to parse — by humans or machines.
 
 - **Generic** — works with any Notion workspace, no hardcoded schema assumptions
 - **Compact** — deterministic JSON envelopes, minimal bytes per response
-- **Safe** — automatic idempotency for all mutations, built-in conflict detection
+- **Safe** — automatic idempotency for all mutations, built-in conflict detection and verify-first recovery
 - **Fast** — zero native dependencies, internal schema caching, batch operations
 - **Agent-friendly** — designed for AI agents that pay per token
 

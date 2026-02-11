@@ -15,6 +15,42 @@ async function safeAppendAuditLog(event: Parameters<typeof appendAuditLog>[0]): 
   }
 }
 
+function getStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : undefined;
+}
+
+function getCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function isAmbiguousMutationError(
+  error: unknown,
+  override?: (error: unknown) => boolean,
+): boolean {
+  if (override) {
+    return override(error);
+  }
+
+  if (error instanceof CliError && error.code === "retryable_upstream") {
+    return true;
+  }
+
+  const status = getStatus(error);
+  if (status === 429 || (typeof status === "number" && status >= 500)) {
+    return true;
+  }
+
+  return getCode(error) === "internal_error";
+}
+
 export async function executeMutationWithIdempotency<T>(args: {
   commandName: string;
   requestId: string;
@@ -22,11 +58,17 @@ export async function executeMutationWithIdempotency<T>(args: {
   entity?: string;
   targetIds?: string[];
   run: () => Promise<T>;
+  recover?: () => Promise<T | null>;
+  isAmbiguousError?: (error: unknown) => boolean;
 }): Promise<T> {
   const store = new IdempotencyStore();
   const requestHash = hashObject(args.requestShape);
   const idempotencyKey = buildInternalIdempotencyKey(args.commandName, args.requestShape);
   let ownsReservation = false;
+  let recoveryAttempted = false;
+  let recoverySucceeded = false;
+  let idempotencyPersistDegraded = false;
+  let outcomeUncertain = false;
 
   try {
     let lookup = store.reserve(idempotencyKey, args.commandName, requestHash);
@@ -90,8 +132,55 @@ export async function executeMutationWithIdempotency<T>(args: {
 
     ownsReservation = true;
 
-    const response = await args.run();
-    store.complete(idempotencyKey, args.commandName, requestHash, response);
+    let response: T;
+    try {
+      response = await args.run();
+    } catch (error) {
+      if (!isAmbiguousMutationError(error, args.isAmbiguousError)) {
+        throw error;
+      }
+
+      recoveryAttempted = true;
+
+      if (args.recover) {
+        try {
+          const recovered = await args.recover();
+          if (recovered !== null) {
+            response = recovered;
+            recoverySucceeded = true;
+          } else {
+            outcomeUncertain = true;
+            throw new CliError(
+              "retryable_upstream",
+              "Mutation outcome could not be confirmed. Re-read before retrying.",
+              { retryable: true },
+            );
+          }
+        } catch {
+          outcomeUncertain = true;
+          throw new CliError(
+            "retryable_upstream",
+            "Mutation outcome could not be confirmed. Re-read before retrying.",
+            { retryable: true },
+          );
+        }
+      } else {
+        outcomeUncertain = true;
+        throw new CliError(
+          "retryable_upstream",
+          "Mutation outcome could not be confirmed. Re-read before retrying.",
+          { retryable: true },
+        );
+      }
+    }
+
+    try {
+      store.complete(idempotencyKey, args.commandName, requestHash, response);
+    } catch {
+      // Avoid surfacing internal idempotency persistence failures to callers
+      // after the write has already succeeded or been verified.
+      idempotencyPersistDegraded = true;
+    }
 
     await safeAppendAuditLog({
       command: args.commandName,
@@ -100,6 +189,10 @@ export async function executeMutationWithIdempotency<T>(args: {
       idempotency_key: idempotencyKey,
       target_ids: args.targetIds,
       ok: true,
+      recovery_attempted: recoveryAttempted,
+      recovery_succeeded: recoverySucceeded,
+      idempotency_persist_degraded: idempotencyPersistDegraded,
+      outcome_uncertain: false,
       timestamp: new Date().toISOString(),
     });
 
@@ -116,6 +209,10 @@ export async function executeMutationWithIdempotency<T>(args: {
       idempotency_key: idempotencyKey,
       target_ids: args.targetIds,
       ok: false,
+      recovery_attempted: recoveryAttempted,
+      recovery_succeeded: recoverySucceeded,
+      idempotency_persist_degraded: idempotencyPersistDegraded,
+      outcome_uncertain: outcomeUncertain,
       timestamp: new Date().toISOString(),
     });
     throw error;
