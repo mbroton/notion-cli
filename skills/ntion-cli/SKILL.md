@@ -5,7 +5,7 @@ description: >
   creating, updating, and managing pages, databases (data sources), and block
   content. Use when the user wants to: (1) search their Notion workspace,
   (2) query or list databases, (3) read, create, update, archive, or relate
-  pages, (4) read, append, insert, or replace block content on pages,
+  pages, (4) read, append, insert, replace, or delete block content on pages,
   (5) manage Notion authentication, or (6) perform any Notion workspace
   operation from the terminal. Trigger on mentions of "Notion", "ntion",
   page/database IDs, or requests involving workspace content management.
@@ -108,6 +108,10 @@ ntion blocks replace-range \
   --start-selector-json '{"where":{"text_contains":"## Old Section"}}' \
   --end-selector-json '{"where":{"text_contains":"## Next Section"}}' \
   --markdown "## New Section\n\nUpdated content"
+
+# Delete blocks
+ntion blocks delete --block-ids <block_id>
+ntion blocks delete --block-ids <id1> <id2> <id3>
 ```
 
 ## Workflow patterns
@@ -124,6 +128,7 @@ ntion blocks replace-range \
 1. Read current content: `ntion blocks get --id <page_id>`
 2. Append new content: `ntion blocks append --id <page_id> --markdown "..."`
 3. Or replace a section: use `blocks replace-range` with selectors
+4. Delete specific blocks: `ntion blocks delete --block-ids <id1> <id2>`
 
 ## Output format
 

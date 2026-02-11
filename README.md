@@ -35,6 +35,16 @@ A single "get all my tasks" workflow tells the whole story:
 2. **No schema bloat** — MCP's database fetch includes ~2 KB of SQLite DDL, ~800 B of XML boilerplate, and ~1.4 KB of base64 `collectionPropertyOption://` URLs that are never used for reads. ntion returns only actionable data.
 3. **Markdown-first** — Page content defaults to markdown, matching what agents actually consume. No manual format negotiation needed.
 
+### Operations the official MCP can't do
+
+The official Notion MCP server has no block delete tool. ntion does:
+
+```bash
+ntion blocks delete --block-ids <block_id>
+```
+
+Delete one or many blocks in a single call — useful for cleaning up content, removing broken blocks, or precise page editing.
+
 ## Agent skill
 
 ntion ships with an [agent skill](https://docs.anthropic.com/en/docs/claude-code/skills) that teaches AI agents how to use the CLI. Install it with:
@@ -157,6 +167,10 @@ ntion blocks replace-range \
   --start-selector-json '{"where":{"text_contains":"Start"}}' \
   --end-selector-json '{"where":{"text_contains":"End"}}' \
   --markdown "Replacement content"
+
+# Delete blocks (not available in the official Notion MCP)
+ntion blocks delete --block-ids <block_id>
+ntion blocks delete --block-ids <id1> <id2> <id3>
 ```
 
 ### Health check

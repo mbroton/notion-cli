@@ -1584,3 +1584,18 @@ export async function replaceBlockRange(
     deleted_count: blocksToDelete.length,
   };
 }
+
+export async function deleteBlocks(
+  notion: NotionClientAdapter,
+  args: { blockIds: string[] },
+): Promise<Record<string, unknown>> {
+  const deletedIds: string[] = [];
+  for (const blockId of args.blockIds) {
+    await notion.deleteBlock({ block_id: blockId });
+    deletedIds.push(blockId);
+  }
+  return {
+    deleted_count: deletedIds.length,
+    deleted_ids: deletedIds,
+  };
+}

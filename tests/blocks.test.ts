@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getBlocks } from "../src/notion/repository.js";
+import { deleteBlocks, getBlocks } from "../src/notion/repository.js";
 import { NotionClientAdapter } from "../src/notion/client.js";
 
 function paragraph(id: string): Record<string, unknown> {
@@ -255,5 +255,22 @@ describe("getBlocks truncation metadata", () => {
     expect(result.content_markdown).toContain("| Name | Age |");
     expect(result.content_markdown).toContain("| --- | --- |");
     expect(result.content_markdown).toContain("| Alice | 30 |");
+  });
+});
+
+describe("deleteBlocks", () => {
+  it("deletes all provided block IDs and returns result", async () => {
+    const notion = {
+      deleteBlock: vi.fn().mockResolvedValue({}),
+    } as unknown as NotionClientAdapter;
+
+    const result = await deleteBlocks(notion, { blockIds: ["b1", "b2", "b3"] });
+
+    expect(result.deleted_count).toBe(3);
+    expect(result.deleted_ids).toEqual(["b1", "b2", "b3"]);
+    expect(notion.deleteBlock).toHaveBeenCalledTimes(3);
+    expect(notion.deleteBlock).toHaveBeenCalledWith({ block_id: "b1" });
+    expect(notion.deleteBlock).toHaveBeenCalledWith({ block_id: "b2" });
+    expect(notion.deleteBlock).toHaveBeenCalledWith({ block_id: "b3" });
   });
 });

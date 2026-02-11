@@ -19,6 +19,7 @@ import {
   BlockSelector,
   createPage,
   createPagesBulk,
+  deleteBlocks,
   getBlocks,
   getDataSource,
   getDataSourceSchema,
@@ -1288,6 +1289,36 @@ const blocksReplaceRangeCommand = blocksCommand
     },
   );
 blocksReplaceRangeCommand.addHelpText("after", BLOCKS_REPLACE_RANGE_HELP_EPILOG);
+
+blocksCommand
+  .command("delete")
+  .description("Delete one or more blocks by ID")
+  .requiredOption("--block-ids <ids...>", "Block IDs to delete")
+  .option("--pretty", "pretty-print JSON output")
+  .option("--timeout-ms <n>", "request timeout in milliseconds")
+  .action(
+    async (options: {
+      blockIds: string[];
+      pretty?: boolean;
+      timeoutMs?: string;
+    }) => {
+      await runAction(Boolean(options.pretty), async (requestId) => {
+        const { notion } = await loadRuntime({ timeoutMs: options.timeoutMs });
+
+        const result = await executeMutationWithIdempotency({
+          commandName: "blocks.delete",
+          requestId,
+          requestShape: { block_ids: options.blockIds },
+          targetIds: options.blockIds,
+          run: () => deleteBlocks(notion, { blockIds: options.blockIds }),
+        });
+
+        return {
+          data: result,
+        };
+      });
+    },
+  );
 
 program
   .command("doctor")
